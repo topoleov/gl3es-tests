@@ -1,5 +1,4 @@
 #include "linmath.h"
-
 #include <emscripten/emscripten.h>
 #define GLFW_INCLUDE_ES3
 #include <GLFW/glfw3.h>
@@ -14,11 +13,13 @@ static const struct
 {
     float x, y;
     float r, g, b;
-} vertices[3] =
+} vertices[5] =
 {
-    { -0.6f, -0.4f, 1.f, 0.f, 0.f },
-    {  0.6f, -0.4f, 0.f, 1.f, 0.f },
-    {   0.f,  0.6f, 0.f, 0.f, 1.f }
+    { -0.5f, -0.1f, 1.f, 0.f, 0.2f },
+    {  0.6f, -0.4f, 0.f, 1.f, 0.3f },
+    {  0.3f, -0.5f, 0.4f, 0.6f, 0.6f },
+    {  0.2f, -0.3f, 0.2f, 0.9f, 0.1f },
+    {   0.f,  0.6f, 1.f, 1.f, 1.f }
 };
 static const char* vertex_shader_text =
     "#version 300 es\n"

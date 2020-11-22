@@ -10,7 +10,7 @@ EOPTS = $(addprefix -s $(EMPTY), $(EOPT))	# Add '-s ' to each option
 # Builds necessary files
 build: $(OBJS)
 		mkdir -p build
-		$(CC) $(FILES) -O3 $(EOPTS) -o build/index.html
+		$(CC) $(FILES) -O3 $(EOPTS) -o build/index.html --shell-file templ.html
 
 # Removes object files, but leaves build for serving
 dist: build
