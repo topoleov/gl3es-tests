@@ -13,3 +13,6 @@ This repository is NOT a project, it is more of a getting started / simple tech 
     - Clean: `make clean`
     - Build, but remove objects leaving the `build` dir: `make dist`
 - You can then use `python -m SimpleHTTPServer 8080` and open your browser to `localhost:8080`.
+
+
+emcc main.cpp -s WASM=1 -o hello.html -s FULL_ES3=1 --shell-file dd.html

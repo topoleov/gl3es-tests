@@ -1,155 +1,187 @@
-#include "linmath.h"
+
 #include <emscripten/emscripten.h>
-#define GLFW_INCLUDE_ES3
-#include <GLFW/glfw3.h>
-#include <GLES3/gl3.h>
-#include <stdio.h>
-#include <stdlib.h>
+#include "esUtil.h"
 
-GLFWwindow * window;
-GLuint vertex_buffer, vertex_shader, fragment_shader, program;
-GLint mvp_location, vpos_location, vcol_location;
-static const struct
+typedef struct
 {
-    float x, y;
-    float r, g, b;
-} vertices[5] =
+   // Handle to a program object
+   GLuint programObject;
+
+} UserData;
+
+///
+// Create a shader object, load the shader source, and
+// compile the shader.
+//
+GLuint LoadShader ( GLenum type, const char *shaderSrc )
 {
-    { -0.5f, -0.1f, 1.f, 0.f, 0.2f },
-    {  0.6f, -0.4f, 0.f, 1.f, 0.3f },
-    {  0.3f, -0.5f, 0.4f, 0.6f, 0.6f },
-    {  0.2f, -0.3f, 0.2f, 0.9f, 0.1f },
-    {   0.f,  0.6f, 1.f, 1.f, 1.f }
-};
-static const char* vertex_shader_text =
-    "#version 300 es\n"
-    "uniform mat4 MVP;\n"
-    "in lowp vec3 vCol;\n"
-    "in lowp vec2 vPos;\n"
-    "out lowp vec3 i_color;\n"
-    "void main()\n"
-    "{\n"
-    "    gl_Position = MVP * vec4(vPos, 0.0, 1.0);\n"
-    "    i_color = vCol;\n"
-    "}\n";
-static const char* fragment_shader_text =
-    "#version 300 es\n"
-    "in lowp vec3 i_color;\n"
-    "out lowp vec4 o_color;\n"
-    "void main()\n"
-    "{\n"
-    "    o_color = vec4(i_color, 1.0);\n"
-    "}\n";
+   GLuint shader;
+   GLint compiled;
 
-static void output_error(int error, const char * msg) {
-    fprintf(stderr, "Error: %s\n", msg);
+   // Create the shader object
+   shader = glCreateShader ( type );
+
+   if ( shader == 0 )
+   {
+      return 0;
+   }
+
+   // Load the shader source
+   glShaderSource ( shader, 1, &shaderSrc, NULL );
+
+   // Compile the shader
+   glCompileShader ( shader );
+
+   // Check the compile status
+   glGetShaderiv ( shader, GL_COMPILE_STATUS, &compiled );
+
+   if ( !compiled )
+   {
+      GLint infoLen = 0;
+
+      glGetShaderiv ( shader, GL_INFO_LOG_LENGTH, &infoLen );
+
+      if ( infoLen > 1 )
+      {
+         char *infoLog = malloc ( sizeof ( char ) * infoLen );
+
+         glGetShaderInfoLog ( shader, infoLen, NULL, infoLog );
+         esLogMessage ( "Error compiling shader:\n%s\n", infoLog );
+
+         free ( infoLog );
+      }
+
+      glDeleteShader ( shader );
+      return 0;
+   }
+
+   return shader;
+
 }
 
-static void generate_frame() {
-    float ratio;
-    int width, height;
-    mat4x4 m, p, mvp;
-    glfwGetFramebufferSize(window, &width, &height);
-    ratio = width / (float) height;
-    glViewport(0, 0, width, height);
-    glClear(GL_COLOR_BUFFER_BIT);
-    mat4x4_identity(m);
-    mat4x4_rotate_Z(m, m, (float) glfwGetTime());
-    mat4x4_ortho(p, -ratio, ratio, -1.f, 1.f, 1.f, -1.f);
-    mat4x4_mul(mvp, p, m);
-    glUseProgram(program);
-    glUniformMatrix4fv(mvp_location, 1, GL_FALSE, (const GLfloat*) mvp);
-    glDrawArrays(GL_TRIANGLES, 0, 3);
+///
+// Initialize the shader and program object
+//
+int Init ( ESContext *esContext )
+{
+   UserData *userData = esContext->userData;
+   char vShaderStr[] =
+      "#version 300 es                          \n"
+      "layout(location = 0) in vec4 vPosition;  \n"
+      "void main()                              \n"
+      "{                                        \n"
+      "   gl_Position = vPosition;              \n"
+      "}                                        \n";
 
-    glfwSwapBuffers(window);
-    glfwPollEvents();
+   char fShaderStr[] =
+      "#version 300 es                              \n"
+      "precision mediump float;                     \n"
+      "out vec4 fragColor;                          \n"
+      "void main()                                  \n"
+      "{                                            \n"
+      "   fragColor = vec4 ( 1.0, 0.0, 0.0, 1.0 );  \n"
+      "}                                            \n";
+
+   GLuint vertexShader;
+   GLuint fragmentShader;
+   GLuint programObject;
+   GLint linked;
+
+   // Load the vertex/fragment shaders
+   vertexShader = LoadShader ( GL_VERTEX_SHADER, vShaderStr );
+   fragmentShader = LoadShader ( GL_FRAGMENT_SHADER, fShaderStr );
+
+   // Create the program object
+   programObject = glCreateProgram ( );
+
+   if ( programObject == 0 )
+   {
+      return 0;
+   }
+
+   glAttachShader ( programObject, vertexShader );
+   glAttachShader ( programObject, fragmentShader );
+
+   // Link the program
+   glLinkProgram ( programObject );
+
+   // Check the link status
+   glGetProgramiv ( programObject, GL_LINK_STATUS, &linked );
+
+   if ( !linked )
+   {
+      GLint infoLen = 0;
+
+      glGetProgramiv ( programObject, GL_INFO_LOG_LENGTH, &infoLen );
+
+      if ( infoLen > 1 )
+      {
+         char *infoLog = malloc ( sizeof ( char ) * infoLen );
+
+         glGetProgramInfoLog ( programObject, infoLen, NULL, infoLog );
+         esLogMessage ( "Error linking program:\n%s\n", infoLog );
+
+         free ( infoLog );
+      }
+
+      glDeleteProgram ( programObject );
+      return FALSE;
+   }
+
+   // Store the program object
+   userData->programObject = programObject;
+
+   glClearColor ( 1.0f, 1.0f, 1.0f, 0.0f );
+   return TRUE;
 }
 
-static int check_compiled(shader) {
-    GLint success = 0;
-    glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
+///
+// Draw a triangle using the shader pair created in Init()
+//
+void Draw ( ESContext *esContext )
+{
+   UserData *userData = esContext->userData;
+   GLfloat vVertices[] = {  0.0f,  0.5f, 0.0f,
+                            -0.5f, -0.5f, 0.0f,
+                            0.5f, -0.5f, 0.0f
+                         };
 
-    if(success == GL_FALSE) {
-        GLint max_len = 0;
-        glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &max_len);
+   // Set the viewport
+   glViewport ( 0, 0, esContext->width, esContext->height );
 
-        GLchar err_log[max_len];
-        glGetShaderInfoLog(shader, max_len, &max_len, &err_log[0]);
-        glDeleteShader(shader);
+   // Clear the color buffer
+   glClear ( GL_COLOR_BUFFER_BIT );
 
-        fprintf(stderr, "Shader compilation failed: %s\n", err_log);
-    }
+   // Use the program object
+   glUseProgram ( userData->programObject );
 
-    return success;
+   // Load the vertex data
+   glVertexAttribPointer ( 0, 3, GL_FLOAT, GL_FALSE, 0, vVertices );
+   glEnableVertexAttribArray ( 0 );
+
+   glDrawArrays ( GL_TRIANGLES, 0, 3 );
 }
 
-static int check_linked(program) {
-    GLint success = 0;
-    glGetProgramiv(program, GL_LINK_STATUS, &success);
+void Shutdown ( ESContext *esContext )
+{
+   UserData *userData = esContext->userData;
 
-    if(success == GL_FALSE) {
-        GLint max_len = 0;
-        glGetProgramiv(program, GL_INFO_LOG_LENGTH, &max_len);
-
-        GLchar err_log[max_len];
-        glGetProgramInfoLog(program, max_len, &max_len, &err_log[0]);
-
-        fprintf(stderr, "Program linking failed: %s\n", err_log);
-    }
-
-    return success;
+   glDeleteProgram ( userData->programObject );
 }
 
-int main() {
-    glfwSetErrorCallback(output_error);
+int esMain ( ESContext *esContext )
+{
+   esContext->userData = malloc ( sizeof ( UserData ) );
 
-    if (!glfwInit()) {
-        fputs("Faileid to initialize GLFW", stderr);
-        emscripten_force_exit(EXIT_FAILURE);
-    }
+   esCreateWindow ( esContext, "Hello Triangle", 320, 240, ES_WINDOW_RGB );
 
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
+   if ( !Init ( esContext ) )
+   {
+      return GL_FALSE;
+   }
 
-    window = glfwCreateWindow(640, 480, "My Title", NULL, NULL);
+   esRegisterShutdownFunc ( esContext, Shutdown );
+   esRegisterDrawFunc ( esContext, Draw );
 
-    if (!window) {
-        fputs("Failed to create GLFW window", stderr);
-        glfwTerminate();
-        emscripten_force_exit(EXIT_FAILURE);
-    }
-
-    glfwMakeContextCurrent(window);
-
-    glGenBuffers(1, &vertex_buffer);
-    glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-
-    vertex_shader = glCreateShader(GL_VERTEX_SHADER);
-    glShaderSource(vertex_shader, 1, &vertex_shader_text, NULL);
-    glCompileShader(vertex_shader);
-    check_compiled(vertex_shader);
-
-    fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(fragment_shader, 1, &fragment_shader_text, NULL);
-    glCompileShader(fragment_shader);
-    check_compiled(fragment_shader);
-
-    program = glCreateProgram();
-    glAttachShader(program, vertex_shader);
-    glAttachShader(program, fragment_shader);
-    glLinkProgram(program);
-    check_linked(program);
-
-    mvp_location = glGetUniformLocation(program, "MVP");
-    vpos_location = glGetAttribLocation(program, "vPos");
-    vcol_location = glGetAttribLocation(program, "vCol");
-    glEnableVertexAttribArray(vpos_location);
-    glVertexAttribPointer(vpos_location, 2, GL_FLOAT, GL_FALSE,
-        sizeof(float) * 5, (void*) 0);
-    glEnableVertexAttribArray(vcol_location);
-    glVertexAttribPointer(vcol_location, 3, GL_FLOAT, GL_FALSE,
-        sizeof(float) * 5, (void*) (sizeof(float) * 2));
-
-    emscripten_set_main_loop(generate_frame, 0, 0);
+   return GL_TRUE;
 }
